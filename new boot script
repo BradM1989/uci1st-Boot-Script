@@ -1,0 +1,198 @@
+#!/bin/sh
+#
+# OpenWrt First Boot Configuration Script
+# Fully automated setup for system, network, firewall, DHCP,
+# HTTPS DNS Proxy, Watchcat, Dropbear, Collectd, custom scripts, TTL rules, etc.
+#
+
+# Starting First Boot Setup..."
+
+##############################################
+# 1) UCI CONFIGURATION (Batch Section)
+##############################################
+
+uci batch <<'EOF'
+# ---------- SYSTEM ----------
+set system.@system[0].hostname='RZ3E'
+set system.@system[0].timezone='CST6CDT,M3.2.0,M11.1.0'
+set system.@system[0].ttylogin='0'
+set system.@system[0].log_size='512'
+set system.@system[0].urandom_seed='0'
+set system.@system[0].zonename='America/Chicago'
+set system.@system[0].log_proto='udp'
+set system.@system[0].conloglevel='8'
+set system.@system[0].cronloglevel='7'
+set system.@system[0].log_file='/tmp/system.log'
+commit system
+
+# ---------- NETWORK ----------
+set network.X='interface'
+set network.X.proto='mbim'
+set network.X.device='/dev/cdc-wdm0'
+set network.X.apn='vzwinternet'
+set network.X.auth='none'
+set network.X.pdptype='ipv4v6'
+set network.globals.packet_steering='2'
+set network.globals.steering_flows='128'
+commit network
+
+# ---------- FIREWALL ----------
+delete firewall.cfg03dc81.network
+add_list firewall.cfg03dc81.network='wan'
+add_list firewall.cfg03dc81.network='wan6'
+add_list firewall.cfg03dc81.network='X'
+commit firewall
+
+# ---------- DHCP ----------
+set dhcp.@dhcp[0].interface='lan'
+set dhcp.@dhcp[0].start='10'
+set dhcp.@dhcp[0].limit='250'
+set dhcp.@dhcp[0].leasetime='4h'
+set dhcp.@dnsmasq[0].sequential_ip='1'
+
+# DHCP HOST: Fractal
+add dhcp host
+set dhcp.@host[-1].name='Fractal'
+set dhcp.@host[-1].dns='1'
+add_list dhcp.@host[-1].mac='A8:A1:59:9D:C6:CF'
+set dhcp.@host[-1].ip='192.168.1.5'
+set dhcp.@host[-1].leasetime='infinite'
+
+# DHCP HOST: AC68U
+add dhcp host
+set dhcp.@host[-1].name='AC68U'
+set dhcp.@host[-1].dns='1'
+add_list dhcp.@host[-1].mac='40:B0:76:AF:CD:30'
+set dhcp.@host[-1].ip='192.168.1.2'
+set dhcp.@host[-1].leasetime='infinite'
+
+# DHCP HOST: Fractal_2.5G
+add dhcp host
+set dhcp.@host[-1].name='Fractal'
+set dhcp.@host[-1].dns='1'
+add_list dhcp.@host[-1].mac='00:E0:4C:6A:39:2D'
+set dhcp.@host[-1].ip='192.168.1.6'
+set dhcp.@host[-1].leasetime='infinite'
+commit dhcp
+
+# ---------- HTTPS-DNS-PROXY ----------
+set https-dns-proxy.dns='https-dns-proxy'
+set https-dns-proxy.dns.bootstrap_dns='94.140.14.49,94.140.14.59'
+set https-dns-proxy.dns.resolver_url='https://d.adguard-dns.com/dns-query/f1935cc1'
+set https-dns-proxy.dns.listen_addr='127.0.0.1'
+set https-dns-proxy.dns.listen_port='5053'
+commit https-dns-proxy
+
+# ---------- WATCHCAT ----------
+delete watchcat.@watchcat[0].forcedelay
+set watchcat.@watchcat[0].mode='run_script'
+set watchcat.@watchcat[0].script='/etc/watchcat.user.sh'
+set watchcat.@watchcat[0].period='120s'
+set watchcat.@watchcat[0].addressfamily='ipv4'
+set watchcat.@watchcat[0].pingperiod='18s'
+set watchcat.@watchcat[0].pingsize='standard'
+set watchcat.@watchcat[0].interface='wwan0'
+commit watchcat
+
+# ---------- LUCI COMMAND ----------
+add luci command
+set luci.@command[-1].name='log_temp'
+set luci.@command[-1].command='/root/log_modem_temp.sh'
+set luci.@command[-1].public='1'
+commit luci
+
+# ---------- COLLECTD ----------
+set luci_statistics.collectd.Interval='15'
+set luci_statistics.rrdtool.default_timespan='5min'
+set luci_statistics.collectd_rrdtool.RRATimespans='1min 5min 10min 15min 30min 45min 1hour 2hour 3hour 4hour 6hour 8hour 12hour 18hour 24hour 36hour 48hour 3days 4days 5days 1week 2weeks 3weeks 1month 2mouths 4months 6months 9months 1year'
+set luci_statistics.collectd_rrdtool.backup='1'
+set luci_statistics.collectd_thermal.enable='1'
+set luci_statistics.collectd_thermal.IgnoreSelected='1'
+set luci_statistics.rrdtool.default_timespan='5min'
+commit luci_statistics
+
+# ---------- VNSTAT ----------
+set vnstat.@vnstat[0]='vnstat'
+set vnstat.@vnstat[0].interface='wwan0'
+commit vnstat
+
+# ---------- DROPBEAR ----------
+set dropbear.main='dropbear'
+set dropbear.main.PasswordAuth='off'
+set dropbear.main.Port='2222'
+set dropbear.main.Interface='lan'
+set dropbear.main.RootPasswordAuth='off'
+commit dropbear
+
+EOF
+
+
+##############################################
+# 2) NON-UCI COMMANDS
+##############################################
+
+# Creating TTL override..."
+mkdir -p /usr/share/nftables.d/chain-pre/mangle_postrouting/
+cat <<'EOT' > /usr/share/nftables.d/chain-pre/mangle_postrouting/01-set-ttl.nft
+ip ttl set 66
+ip6 hoplimit set 66
+EOT
+
+# Creating watchcat user script..."
+cat <<'EOT' > /etc/watchcat.user.sh
+#!/bin/sh
+ifup X
+sleep 6
+/etc/init.d/network reload
+sleep 6
+/etc/init.d/https-dns-proxy reload
+EOT
+chmod 7777 /etc/watchcat.user.sh
+
+# Fixing opkg list directory..."
+sed -i -e "/^lists_dir\s/s:/var/opkg-lists$:/usr/lib/opkg/lists:" /etc/opkg.conf
+
+
+mkdir -p /root/logs/
+
+
+mkdir -p /etc/dropbear/
+grep -q "fractal@Fractal" /etc/dropbear/authorized_keys || \
+echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICU/eQhQlCl59pVQUBT0Le4ojzwqF6Re6I/GwHmx9X0t fractal@Fractal" >> /etc/dropbear/authorized_keys
+
+echo "[*] Download modem temperature script..."
+wget -O /root/log_modem_temp.sh https://raw.githubusercontent.com/BradM1989/uci1st-Boot-Script/refs/heads/main/log_modem_temp.sh
+chmod -x /root/log_modem_temp.sh
+
+
+cat <<'EOT' > /etc/rc.local
+/root/log_modem_temp.sh
+exit 0
+EOT
+
+wget -O /etc/crontabs/root https://raw.githubusercontent.com/BradM1989/uci1st-Boot-Script/refs/heads/main/crontabs/root
+/etc/init.d/cron restart
+
+
+
+##############################################
+# 3) SERVICE RESTARTS
+##############################################
+
+
+/etc/init.d/system restart
+/etc/init.d/watchcat restart
+/etc/init.d/firewall restart
+/etc/init.d/dnsmasq restart
+/etc/init.d/odhcpd restart
+/etc/init.d/https-dns-proxy restart
+/etc/init.d/luci_statistics restart
+/etc/init.d/uhttpd restart
+/etc/init.d/network restart
+/etc/init.d/dropbear restart
+
+echo "[✓] First Boot Setup Complete!"
+
+echo "[*] Expanding root filesystem..."
+wget -U "" -O expand-root.sh "https://openwrt.org/_export/code/docs/guide-user/advanced/expand_root?codeblock=0"
+. ./expand-root.sh
