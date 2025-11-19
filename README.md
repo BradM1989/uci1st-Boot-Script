@@ -9,7 +9,7 @@ set network.X.proto='mbim'
 set network.X.device='/dev/cdc-wdm0'
 set network.X.apn='vzwinternet'
 set network.X.auth='none'
-set network.X.pdptype='ipv4'
+set network.X.pdptype='ipv4v6'
 del firewall.cfg03dc81.network
 add_list firewall.cfg03dc81.network='wan'
 add_list firewall.cfg03dc81.network='wan6'
