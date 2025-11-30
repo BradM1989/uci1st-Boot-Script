@@ -1,0 +1,10 @@
+#!/bin/sh
+
+DEVICE="/dev/ttyUSB0"
+
+if [ -z "$1" ]; then
+    echo "Usage: $0 \"AT COMMAND\""
+    exit 1
+fi
+
+printf "%s\r" "$1" | picocom -q -b 115200 "$DEVICE" --exit-after 300 --nolock
