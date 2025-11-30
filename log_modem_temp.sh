@@ -2,7 +2,7 @@
 
 DEVICE="/dev/ttyUSB0"
 INTERVAL=15  # seconds
-RRD="/tmp/rrd/RZ3E/sensors-EM9191/temperature-temp1.rrd"
+RRD="/tmp/rrd/RZ3E/sensors-EM9191/temperature.rrd"
 
 # Create RRD if missing
 if [ ! -f "$RRD" ]; then
